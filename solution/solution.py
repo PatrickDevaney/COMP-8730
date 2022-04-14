@@ -14,6 +14,7 @@ from tensorflow.keras import Input, Model, Sequential
 from tensorflow.keras.initializers import Constant
 from tensorflow.keras.layers import Concatenate, Dense, Embedding, Flatten, GRU, Reshape, TextVectorization
 from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.regularizers import l2
 from keras.preprocessing.sequence import pad_sequences
 
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -34,8 +35,8 @@ def tweetsFromJSON(tweetName):
 	# Split into lines and return
 	return [json.loads(line) for line in contents.split('\n')[:-1]]
 
-# Read the labellings, tweets, and embeddings for training into memory from file paths
-def readLearningFiles(labelName, tweetName, embeddingsName):
+# Read labels from a file
+def readLabels(labelName):
 	# Read the labels into memory
 	with open(labelName) as f:
 		contents = f.read()
@@ -47,6 +48,11 @@ def readLearningFiles(labelName, tweetName, embeddingsName):
 		line = line.split(",")
 		if len(line) == 2:
 			labels[line[0]] = float(line[1])
+	return labels
+
+# Read the labellings, tweets, and embeddings for training into memory from file paths
+def readLearningFiles(labelName, tweetName, embeddingsName):
+	labels = readLabels(labelName)
 
 	# Read tweets into memory
 	tweets = tweetsFromJSON(tweetName)
@@ -120,6 +126,8 @@ def preprocessData(vec, t_vec, tweets, labels=None):
 	tr_x = []
 	tr_y = []
 	tr_count_x = []
+	tweets = tweets[:]
+	np.random.shuffle(tweets)
 	for t in tweets:
 		tr_x.append(t["full_text"])
 		tr_count_x.append(countFeatures(t))
@@ -133,6 +141,13 @@ def preprocessData(vec, t_vec, tweets, labels=None):
 	if labels != None:
 		return tr_x, tfidf_x, tr_count_x, tr_y
 	return tr_x, tfidf_x, tr_count_x
+
+# Split tweets into test and training sets
+def splitData(tweets):
+	tweets = tweets[:]
+	np.random.shuffle(tweets)
+	sp = round(0.8 * len(tweets))
+	return tweets[:sp], tweets[sp:]
 
 # Create and train neural network
 def createRNN(inputs, labels, embedding_matrix=None, batch_size=32, epochs=10):
@@ -148,8 +163,8 @@ def createRNN(inputs, labels, embedding_matrix=None, batch_size=32, epochs=10):
 	count = Input(shape=(11,))
 	con = Concatenate()([tfidf, count,r_l])
 	# Feed all of this to a few regular neural network layers
-	d_l = Dense(300, activation="relu")(con)
-	d_l = Dense(100, activation="relu")(d_l)
+	d_l = Dense(300, activation="elu", kernel_initializer="he_normal", kernel_regularizer=l2(0.01))(con)
+	d_l = Dense(100, activation="elu", kernel_initializer="he_normal", kernel_regularizer=l2(0.01))(d_l)
 	output = Dense(1, activation="sigmoid")(d_l)
 	# Create, train, and return the final neural network
 	rnn = Model([input_vec, tfidf, count],output)
@@ -162,22 +177,40 @@ if len(argv) < 4:
 	print("Error: Provide labels, training data, and test data")
 	exit()
 
+# Determine names based on presence of an eval flag
+if argv[1] == "-eval":
+	labelName = argv[2]
+	tweetName = argv[3]
+else:
+	labelName = argv[1]
+	tweetName = argv[2]
+	predictName = argv[3]
+
 # Load the files into memory
-labelName = argv[1]
-tweetName = argv[2]
-predictName = argv[3]
 labels, tweets, word_vector = readLearningFiles(labelName, tweetName, embeddingsName)
 
 # Preprocess embeddings
 vec, embedding_matrix, t_vec = preprocessEmbeddings(tweets,word_vector)
-# Preprocess training data
-tr_x, tfidf_x, tr_count_x, tr_y = preprocessData(vec, t_vec, tweets, labels)
-# Create and train the neural network
-rnn = createRNN([tr_x, tfidf_x, tr_count_x], tr_y, embedding_matrix)
 
-# Load data to predict and make preductions
-predictTweets = tweetsFromJSON(predictName)
-predict_tr, predict_tfidf, predict_count = preprocessData(vec, t_vec, predictTweets)
-predictions = rnn.predict([predict_tr, predict_tfidf, predict_count])
-for i in range(len(predictTweets)):
-	print(predictTweets[i]["id_str"] + "," + str(predictions[i]))
+if argv[1] == "-eval":
+	# Split tweets into training and test
+	trTweets, testTweets = splitData(tweets)
+	# Preprocess training data
+	tr_x, tfidf_x, tr_count_x, tr_y = preprocessData(vec, t_vec, trTweets, labels)
+	# Preprocess test data
+	test_x, test_tfidf_x, test_count_x, test_y = preprocessData(vec, t_vec, trTweets, labels)
+	# Create and train the neural network
+	rnn = createRNN([tr_x, tfidf_x, tr_count_x], tr_y, embedding_matrix)
+	loss, acc = rnn.evaluate([test_x, test_tfidf_x, test_count_x], test_y)
+	print("Loss: ", loss, "\tAccuracy: ", acc)
+else:
+	# Preprocess training data
+	tr_x, tfidf_x, tr_count_x, tr_y = preprocessData(vec, t_vec, tweets, labels)
+	# Create and train the neural network
+	rnn = createRNN([tr_x, tfidf_x, tr_count_x], tr_y, embedding_matrix)
+	# Load data to predict and make preductions
+	predictTweets = tweetsFromJSON(predictName)
+	predict_tr, predict_tfidf, predict_count = preprocessData(vec, t_vec, predictTweets)
+	predictions = rnn.predict([predict_tr, predict_tfidf, predict_count])
+	for i in range(len(predictTweets)):
+		print(predictTweets[i]["id_str"] + "," + str(predictions[i][0]))
