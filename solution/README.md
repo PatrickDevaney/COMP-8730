@@ -5,7 +5,7 @@ This solution trains a model to identify COVID-19 misinformation in tweets.
 
 Dependencies
 ------------
-The package dependencies are tensorflow, scikit-learn, and nltk.
+The package dependencies are numpy, nltk, scikit-learn, and tensorflow.
 
 To install the dependencies:
 
