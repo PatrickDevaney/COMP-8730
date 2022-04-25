@@ -26,7 +26,7 @@ To evaluate the model:
 
 where modelname is rnn or bert, parameter is the amount of L2 regularization or dropout, respectively, labels_file is a file of comma-seperated tweet IDs and labels (1 for misinformation tweets, 0 otherwise), and training_file is a JSON file of tweets obtained by Twitter's API. The ID's of all tweets in training_file must appear in labels_file, but any additional labels will be ignored.
 
-The program will automatically split the data into ten training and test sets (of size 90% and 10% each, respectively) for cross-validation.
+The program will automatically split the data into ten training and test sets (of size 90% and 10% each, respectively) for cross-validation, and report the average loss, accuracy, precision, recall, and f1 scores.
 
 Replication
 -----------
