@@ -1,0 +1,8 @@
+numpy
+nltk
+pandas
+sklearn
+tensorflow
+tensorflow_hub
+tensorflow_text
+tf-models-official
